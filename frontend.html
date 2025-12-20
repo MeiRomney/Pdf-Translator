@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>English ⇄ Khmer PDF Translator</title>
+</head>
+<body>
+  <h2>PDF Translator (EN ⇄ KM)</h2>
+  <form action="/translate" method="post" enctype="multipart/form-data">
+    <input type="file" name="file" accept="application/pdf" required><br><br>
+    <select name="direction">
+      <option value="en-km">English → Khmer</option>
+      <option value="km-en">Khmer → English</option>
+    </select><br><br>
+    <button type="submit">Translate</button>
+  </form>
+</body>
+</html>
