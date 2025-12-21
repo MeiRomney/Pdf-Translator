@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" href="/static/images/logo.png">
+    <title>PDF Translator</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>📄 PDF Translator</h1>
+        <p class="subtitle">Translate PDF documents between English and Khmer</p>
+        
+        <form id="form" enctype="multipart/form-data">
+            <div class="upload-box" id="uploadBox">
+                <div class="upload-icon">☁️</div>
+                <p id="filename">Click to select PDF</p>
+                <input type="file" id="file" name="file" accept="application/pdf" required>
+            </div>
+            
+            <div class="radio-group">
+                <label class="option">
+                    <input type="radio" name="direction" value="en-km" checked>
+                    <span>English → Khmer</span>
+                </label>
+                <label class="option">
+                    <input type="radio" name="direction" value="km-en">
+                    <span>Khmer → English</span>
+                </label>
+            </div>
+            
+            <button type="submit" id="btn">Translate PDF</button>
+        </form>
+        
+        <div class="message" id="msg"></div>
+        
+        <div class="info-box">
+            <strong>ℹ️ Note:</strong> Large PDFs may take several minutes to process. 
+            The translation uses Google Translate for quality results.
+        </div>
+    </div>
+    
+    <script src="/static/script.js"></script>
+</body>
+</html>
