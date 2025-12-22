@@ -3,7 +3,7 @@ from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 import fitz  # PyMuPDF
-from googletrans import Translator
+from deep_translator import GoogleTranslator
 from docx import Document
 from docx.shared import Pt
 
@@ -27,8 +27,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-translator = Translator()
 
 @app.get("/")
 async def root():
@@ -64,6 +62,7 @@ def extract_text_from_pdf(pdf_bytes: bytes) -> str:
 
 
 def translate_text(text: str, source_lang: str, target_lang: str) -> str:
+    """Translate text using deep-translator"""
     max_chunk = 4500
     paragraphs = text.split("\n")
     chunks = []
@@ -84,10 +83,14 @@ def translate_text(text: str, source_lang: str, target_lang: str) -> str:
     for i, chunk in enumerate(chunks):
         try:
             chunk = clean_text_for_xml(chunk)
-            result = translator.translate(chunk, src=source_lang, dest=target_lang)
-            translated_chunks.append(clean_text_for_xml(result.text))
-            print(f"Translated chunk {i + 1}/{len(chunks)}")
-            time.sleep(0.5)
+            if chunk.strip():  # Only translate non-empty chunks
+                translator = GoogleTranslator(source=source_lang, target=target_lang)
+                result = translator.translate(chunk)
+                translated_chunks.append(clean_text_for_xml(result))
+                print(f"Translated chunk {i + 1}/{len(chunks)}")
+                time.sleep(0.5)  # Rate limiting
+            else:
+                translated_chunks.append(chunk)
         except Exception as e:
             print(f"Translation error on chunk {i}: {e}")
             translated_chunks.append(chunk)
@@ -136,6 +139,8 @@ async def translate_pdf(
         if not text or len(text) < 10:
             raise HTTPException(status_code=400, detail="Failed to extract text from PDF")
 
+        # Map language codes for deep-translator
+        # deep-translator uses 'km' for Khmer and 'en' for English
         src, tgt = ("en", "km") if direction == "en-km" else ("km", "en")
 
         print(f"Translating {src} → {tgt}")
