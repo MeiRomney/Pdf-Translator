@@ -1,3 +1,5 @@
+const API_URL = 'https://your-render-app.onrender.com';
+
 const form = document.getElementById('form');
 const fileInput = document.getElementById('file');
 const uploadBox = document.getElementById('uploadBox');
@@ -45,7 +47,17 @@ fileInput.addEventListener('change', (e) => {
 form.addEventListener('submit', async (e) => {
     e.preventDefault();
     
-    const formData = new FormData(form);
+    const file = fileInput.files[0];
+    if (!file) {
+        showMessage('Please select a PDF file', 'error');
+        return;
+    }
+
+    const direction = document.querySelector('input[name="direction"]:checked').value;
+    
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('direction', direction);
     
     // Update UI - processing state
     btn.disabled = true;
@@ -55,13 +67,14 @@ form.addEventListener('submit', async (e) => {
     msg.textContent = 'Translating PDF... This may take several minutes for large files.';
 
     try {
-        const response = await fetch('/translate', {
+        const response = await fetch(`${API_URL}/translate`, {
             method: 'POST',
             body: formData
         });
 
         if (!response.ok) {
-            throw new Error('Translation failed. Please try again.');
+            const errorData = await response.json().catch(() => ({ detail: 'Translation failed' }));
+            throw new Error(errorData.detail || 'Translation failed. Please try again.');
         }
 
         // Download the translated file
@@ -76,13 +89,11 @@ form.addEventListener('submit', async (e) => {
         window.URL.revokeObjectURL(url);
 
         // Update UI - success state
-        msg.className = 'message success';
-        msg.textContent = '✓ Translation complete! File downloaded successfully.';
+        showMessage('✓ Translation complete! File downloaded successfully.', 'success');
         
     } catch (error) {
-        // Update UI - error state
-        msg.className = 'message error';
-        msg.textContent = '✗ Error: ' + error.message;
+        console.error('Translation error:', error);
+        showMessage('✗ Error: ' + error.message, 'error');
         
     } finally {
         // Reset button state
@@ -90,3 +101,9 @@ form.addEventListener('submit', async (e) => {
         btn.textContent = 'Translate PDF';
     }
 });
+
+function showMessage(text, type) {
+    msg.style.display = 'block';
+    msg.className = `message ${type}`;
+    msg.textContent = text;
+}

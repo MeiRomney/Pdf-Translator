@@ -1,27 +1,28 @@
-from fastapi import FastAPI, UploadFile, Form, File
+from fastapi import FastAPI, UploadFile, Form, File, HTTPException
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 
 import fitz  # PyMuPDF
 from googletrans import Translator
 from docx import Document
 from docx.shared import Pt
 
-import os
 import io
 import time
 import re
-
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-CLIENT_DIR = os.path.join(BASE_DIR, "client")
+import os
 
 app = FastAPI()
 
-# CORS
+# CORS - Allow your Vercel frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "https://*.vercel.app",  # All Vercel preview deployments
+        "https://your-app-name.vercel.app",  # Replace with your actual Vercel URL
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -29,13 +30,19 @@ app.add_middleware(
 
 translator = Translator()
 
-app.mount("/static", StaticFiles(directory=CLIENT_DIR), name="static")
-
 @app.get("/")
-async def read_index():
-    with open(os.path.join(CLIENT_DIR, "index.html"), "r", encoding="utf-8") as f:
-        content = f.read()
-    return StreamingResponse(io.StringIO(content), media_type="text/html")
+async def root():
+    return {
+        "message": "PDF Translator API",
+        "status": "active",
+        "endpoints": {
+            "translate": "/translate (POST)"
+        }
+    }
+
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy"}
 
 def clean_text_for_xml(text: str) -> str:
     if not text:
@@ -105,7 +112,6 @@ def create_docx(text: str) -> io.BytesIO:
             except Exception as e:
                 print(f"DOCX error: {e}")
 
-    # Save to BytesIO instead of file
     docx_io = io.BytesIO()
     doc.save(docx_io)
     docx_io.seek(0)
@@ -117,6 +123,10 @@ async def translate_pdf(
     direction: str = Form(...)
 ):
     try:
+        # Validate file type
+        if not file.filename.endswith('.pdf'):
+            raise HTTPException(status_code=400, detail="Only PDF files are allowed")
+        
         # Read PDF into memory
         pdf_bytes = await file.read()
         
@@ -124,7 +134,7 @@ async def translate_pdf(
         text = extract_text_from_pdf(pdf_bytes)
 
         if not text or len(text) < 10:
-            raise Exception("Failed to extract text from PDF")
+            raise HTTPException(status_code=400, detail="Failed to extract text from PDF")
 
         src, tgt = ("en", "km") if direction == "en-km" else ("km", "en")
 
@@ -136,7 +146,6 @@ async def translate_pdf(
 
         print("Translation complete!")
 
-        # Stream the file directly to client
         return StreamingResponse(
             docx_io,
             media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -145,10 +154,13 @@ async def translate_pdf(
             }
         )
 
+    except HTTPException:
+        raise
     except Exception as e:
         print("Error:", e)
-        raise
+        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("server:app", host="0.0.0.0", port=8000, reload=True)
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run("server:app", host="0.0.0.0", port=port, reload=False)
