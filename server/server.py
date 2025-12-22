@@ -23,6 +23,7 @@ app.add_middleware(
         "http://localhost:5173",
         "https://*.vercel.app",  # All Vercel preview deployments
         "https://pdf-translator-five.vercel.app",  # Replace with your actual Vercel URL
+        "https://pdf-translator-mei-romneys-projects.vercel.app",
     ],
     allow_credentials=True,
     allow_methods=["*"],
