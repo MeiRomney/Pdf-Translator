@@ -1,4 +1,4 @@
-const API_URL = 'https://your-render-app.onrender.com';
+const API_URL = 'https://pdf-translator-78s1.onrender.com/';
 
 const form = document.getElementById('form');
 const fileInput = document.getElementById('file');
