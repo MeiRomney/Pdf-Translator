@@ -1,5 +1,5 @@
 from fastapi import FastAPI, UploadFile, Form, File
-from fastapi.responses import FileResponse
+from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -9,17 +9,12 @@ from docx import Document
 from docx.shared import Pt
 
 import os
-import uuid
+import io
 import time
 import re
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CLIENT_DIR = os.path.join(BASE_DIR, "client")
-UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
-OUTPUT_DIR = os.path.join(BASE_DIR, "outputs")
-
-os.makedirs(UPLOAD_DIR, exist_ok=True)
-os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 app = FastAPI()
 
@@ -38,7 +33,9 @@ app.mount("/static", StaticFiles(directory=CLIENT_DIR), name="static")
 
 @app.get("/")
 async def read_index():
-    return FileResponse(os.path.join(CLIENT_DIR, "index.html"))
+    with open(os.path.join(CLIENT_DIR, "index.html"), "r", encoding="utf-8") as f:
+        content = f.read()
+    return StreamingResponse(io.StringIO(content), media_type="text/html")
 
 def clean_text_for_xml(text: str) -> str:
     if not text:
@@ -47,8 +44,9 @@ def clean_text_for_xml(text: str) -> str:
     return text.encode("utf-8", errors="ignore").decode("utf-8", errors="ignore")
 
 
-def extract_text_from_pdf(pdf_path: str) -> str:
-    doc = fitz.open(pdf_path)
+def extract_text_from_pdf(pdf_bytes: bytes) -> str:
+    """Extract text from PDF bytes in memory"""
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
     text = ""
     for page in doc:
         page_text = page.get_text()
@@ -90,7 +88,8 @@ def translate_text(text: str, source_lang: str, target_lang: str) -> str:
     return "\n".join(translated_chunks)
 
 
-def create_docx(text: str) -> Document:
+def create_docx(text: str) -> io.BytesIO:
+    """Create DOCX document in memory and return BytesIO"""
     doc = Document()
     doc.add_heading("Translated Document", level=1)
 
@@ -106,22 +105,23 @@ def create_docx(text: str) -> Document:
             except Exception as e:
                 print(f"DOCX error: {e}")
 
-    return doc
+    # Save to BytesIO instead of file
+    docx_io = io.BytesIO()
+    doc.save(docx_io)
+    docx_io.seek(0)
+    return docx_io
 
 @app.post("/translate")
 async def translate_pdf(
     file: UploadFile = File(...),
     direction: str = Form(...)
 ):
-    uid = str(uuid.uuid4())
-    pdf_path = os.path.join(UPLOAD_DIR, f"{uid}.pdf")
-
-    with open(pdf_path, "wb") as f:
-        f.write(await file.read())
-
     try:
+        # Read PDF into memory
+        pdf_bytes = await file.read()
+        
         print("Extracting text...")
-        text = extract_text_from_pdf(pdf_path)
+        text = extract_text_from_pdf(pdf_bytes)
 
         if not text or len(text) < 10:
             raise Exception("Failed to extract text from PDF")
@@ -132,21 +132,20 @@ async def translate_pdf(
         translated_text = translate_text(text, src, tgt)
 
         print("Creating DOCX...")
-        doc = create_docx(translated_text)
-        output_path = os.path.join(OUTPUT_DIR, f"{uid}.docx")
-        doc.save(output_path)
+        docx_io = create_docx(translated_text)
 
-        os.remove(pdf_path)
+        print("Translation complete!")
 
-        return FileResponse(
-            output_path,
-            filename="translated.docx",
-            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        # Stream the file directly to client
+        return StreamingResponse(
+            docx_io,
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            headers={
+                "Content-Disposition": "attachment; filename=translated.docx"
+            }
         )
 
     except Exception as e:
-        if os.path.exists(pdf_path):
-            os.remove(pdf_path)
         print("Error:", e)
         raise
 
