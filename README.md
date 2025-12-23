@@ -7,6 +7,10 @@ Live site: [https://pdf-translator-five.vercel.app/](https://pdf-translator-five
 
 ---
 
+<img width="1918" height="902" alt="image" src="https://github.com/user-attachments/assets/8ea55705-3e90-4c90-864d-e15e98ca614e" />
+
+---
+
 ## Features
 
 - Upload a PDF document and select translation direction:
