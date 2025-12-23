@@ -3,7 +3,7 @@
 A web application that translates PDF documents between English and Khmer.
 The project consists of a FastAPI backend and a static frontend (HTML/CSS/JS).
 
-Live site: https://pdf-translator-mei-romneys-projects.vercel.app/
+Live site: [https://pdf-translator-five.vercel.app/](https://pdf-translator-five.vercel.app/)
 
 ---
 
