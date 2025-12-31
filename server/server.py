@@ -24,6 +24,7 @@ app.add_middleware(
         "https://*.vercel.app",  # All Vercel preview deployments
         "https://pdf-translator-five.vercel.app",  # Replace with your actual Vercel URL
         "https://pdf-translator-mei-romneys-projects.vercel.app",
+        "https://pdf-translator-khm-en.vercel.app/",
     ],
     allow_credentials=True,
     allow_methods=["*"],
