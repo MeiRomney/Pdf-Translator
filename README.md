@@ -3,7 +3,7 @@
 A web application that translates PDF documents between English and Khmer.
 The project consists of a FastAPI backend and a static frontend (HTML/CSS/JS).
 
-Live site: [https://pdf-translator-five.vercel.app/](https://pdf-translator-five.vercel.app/)
+Live site: [https://pdf-translator-khm-en.vercel.app/](https://pdf-translator-khm-en.vercel.app/)
 
 ---
 
@@ -17,7 +17,7 @@ Live site: [https://pdf-translator-five.vercel.app/](https://pdf-translator-five
   - English → Khmer
   - Khmer → English
 - Uses Deep Translator (Google Translate API) for translation.
-- Generates and downloads the translated document as a DOCX file.
+- Generates and downloads the translated document as a DOCX, DOC, TXT file.
 - Drag-and-drop PDF support.
 - Works locally and can be deployed to Render (backend) + Vercel (frontend).
 
@@ -92,7 +92,8 @@ app.add_middleware(
         "http://localhost:5173",
         "http://127.0.0.1:5500",
         "https://*.vercel.app",
-        "https://pdf-translator-mei-romneys-projects.vercel.app"
+        "https://pdf-translator-mei-romneys-projects.vercel.app",
+        "https://pdf-translator-khm-en.vercel.app"
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -123,7 +124,7 @@ const API_URL = "https://your-backend-service.onrender.com";
 
 ## Usage
 
-Open the [live site](https://pdf-translator-mei-romneys-projects.vercel.app/)
+Open the [live site](https://pdf-translator-khm-en.vercel.app/)
 
 1. Upload a PDF file.
 2. Select the translation direction.
