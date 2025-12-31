@@ -122,10 +122,51 @@ def create_docx(text: str) -> io.BytesIO:
     docx_io.seek(0)
     return docx_io
 
+def create_doc(text: str) -> io.BytesIO:
+    """Create DOC document (Word 97-2003 format) - using DOCX library
+    Note: python-docx actually creates .docx format, but we'll label it as .doc
+    For true .doc format, we'd need a different library like pywin32 (Windows only)
+    or LibreOffice conversion. This is a compatibility workaround."""
+    doc = Document()
+    doc.add_heading("Translated Document", level=1)
+
+    text = clean_text_for_xml(text)
+
+    for line in text.split("\n"):
+        line = line.strip()
+        if line:
+            try:
+                p = doc.add_paragraph(line)
+                for run in p.runs:
+                    run.font.size = Pt(12)
+            except Exception as e:
+                print(f"Doc error: {e}")
+
+    doc_io = io.BytesIO()
+    doc.save(doc_io)
+    doc_io.seek(0)
+    return doc_io
+
+def create_txt(text: str) -> io.BytesIO:
+    """Create plain text file in memory and return BytesIO"""
+    text = clean_text_for_xml(text)
+
+    # Add a simple header
+    content = "TRANSLATED DOCUMENT\n"
+    content += "=" * 50 + "\n\n"
+    content += text
+
+    txt_io = io.BytesIO()
+    txt_io.write(content.encode('utf-8'))
+    txt_io.seek(0)
+    return txt_io
+    
+
 @app.post("/translate")
 async def translate_pdf(
     file: UploadFile = File(...),
-    direction: str = Form(...)
+    direction: str = Form(...),
+    format: str = Form("docx") # default to docx if not specified
 ):
     try:
         # Validate file type
@@ -148,16 +189,28 @@ async def translate_pdf(
         print(f"Translating {src} → {tgt}")
         translated_text = translate_text(text, src, tgt)
 
-        print("Creating DOCX...")
-        docx_io = create_docx(translated_text)
+        # Create the appropriate file format
+        print(f"Creating {format.upper()} file...")
+        if format == "docx":
+            file_io = create_docx(translated_text)
+            media_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            filename = "translated.docx"
+        elif format == "doc":
+            file_io = create_doc(translated_text)
+            media_type = "application/msword"
+            filename = "translated.doc"
+        else: #txt
+            file_io = create_txt(translated_text)
+            media_type = "text/plain"
+            filename = "translated.txt"
 
         print("Translation complete!")
 
         return StreamingResponse(
-            docx_io,
-            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            file_io,
+            media_type=media_type,
             headers={
-                "Content-Disposition": "attachment; filename=translated.docx"
+                "Content-Disposition": f"attachment; filename={filename}"
             }
         )
 

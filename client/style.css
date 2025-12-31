@@ -112,6 +112,45 @@ input[type="file"] {
     font-size: 16px;
 }
 
+.format-section {
+    margin: 20px 0;
+    padding: 15px;
+    border: 2px solid #e0e0e0;
+    border-radius: 10px;
+    background: #f8f9ff;
+}
+
+.format-label {
+    display: block;
+    color: #333;
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 10px;
+}
+
+.format-select {
+    width: 100%;
+    padding: 12px 15px;
+    border: 2px solid #e0e0e0;
+    border-radius: 8px;
+    font-size: 15px;
+    color: #333;
+    background: white;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-family: inherit;
+}
+
+.format-select:hover {
+    border-color: #667eea;
+}
+
+.format-select:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
 button {
     width: 100%;
     padding: 15px;
@@ -258,6 +297,15 @@ button:disabled {
         padding: 12px;
     }
 
+    .format-section {
+        padding: 12px;
+    }
+
+    .format-select {
+        font-size: 14px;
+        padding: 10px 12px;
+    }
+
     .message {
         font-size: 14px;
     }
@@ -297,6 +345,19 @@ button:disabled {
     .option {
         padding: 10px;
         font-size: 14px;
+    }
+
+    .format-selection {
+        padding: 10px;
+    }
+
+    .format-label {
+        font-size: 13px;
+    }
+
+    .format-select {
+        font-size: 13px;
+        padding: 9px 10px;
     }
 
     .message {

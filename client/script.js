@@ -1,5 +1,5 @@
-const API_URL = 'https://pdf-translator-78s1.onrender.com';
-// const API_URL = 'http://localhost:8000';
+// const API_URL = 'https://pdf-translator-78s1.onrender.com';
+const API_URL = 'http://localhost:8000';
 
 const form = document.getElementById('form');
 const fileInput = document.getElementById('file');
@@ -7,6 +7,7 @@ const uploadBox = document.getElementById('uploadBox');
 const btn = document.getElementById('btn');
 const msg = document.getElementById('msg');
 const filename = document.getElementById('filename');
+const formatSelect = document.getElementById('format');
 
 // Handle file selection via click
 uploadBox.addEventListener('click', () => {
@@ -55,10 +56,12 @@ form.addEventListener('submit', async (e) => {
     }
 
     const direction = document.querySelector('input[name="direction"]:checked').value;
+    const format = formatSelect.value;
     
     const formData = new FormData();
     formData.append('file', file);
     formData.append('direction', direction);
+    formData.append('format', format);
     
     // Update UI - processing state
     btn.disabled = true;
@@ -83,7 +86,11 @@ form.addEventListener('submit', async (e) => {
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = 'translated.docx';
+
+        // Set the correct file extension based on format
+        const fileExtension = format === 'docx' ? 'docx' : format === 'doc' ? 'doc' : 'txt';
+        a.download = `translated.${fileExtension}`;
+
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
