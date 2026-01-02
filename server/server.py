@@ -3,9 +3,11 @@ from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 import fitz  # PyMuPDF
-from deep_translator import GoogleTranslator
+from googletrans import Translator
 from docx import Document
 from docx.shared import Pt
+import pytesseract
+from PIL import Image
 
 import io
 import time
@@ -21,8 +23,8 @@ app.add_middleware(
         "http://localhost:3000",
         "http://127.0.0.1:5500",
         "http://localhost:5173",
-        "https://*.vercel.app",  # All Vercel preview deployments
-        "https://pdf-translator-five.vercel.app",  # Replace with your actual Vercel URL
+        "https://*.vercel.app",
+        "https://pdf-translator-five.vercel.app",
         "https://pdf-translator-mei-romneys-projects.vercel.app",
         "https://pdf-translator-khm-en.vercel.app",
     ],
@@ -52,8 +54,34 @@ def clean_text_for_xml(text: str) -> str:
     return text.encode("utf-8", errors="ignore").decode("utf-8", errors="ignore")
 
 
+def extract_text_from_pdf_ocr(pdf_bytes: bytes, lang: str = 'khm') -> str:
+    """Extract text from PDF using OCR (for Khmer PDFs with font issues)"""
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    text = ""
+    
+    for page_num, page in enumerate(doc):
+        print(f"OCR processing page {page_num + 1}/{len(doc)}...")
+        
+        # Convert page to image
+        # Increase resolution for better OCR (300 DPI)
+        mat = fitz.Matrix(300/72, 300/72)
+        pix = page.get_pixmap(matrix=mat)
+        
+        # Convert to PIL Image
+        img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+        
+        # Perform OCR
+        # lang='khm' for Khmer, 'eng' for English
+        page_text = pytesseract.image_to_string(img, lang=lang)
+        page_text = clean_text_for_xml(page_text)
+        text += page_text + "\n\n"
+    
+    doc.close()
+    return text.strip()
+
+
 def extract_text_from_pdf(pdf_bytes: bytes) -> str:
-    """Extract text from PDF bytes in memory"""
+    """Extract text from PDF bytes in memory (standard method)"""
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
     text = ""
     for page in doc:
@@ -65,7 +93,10 @@ def extract_text_from_pdf(pdf_bytes: bytes) -> str:
 
 
 def translate_text(text: str, source_lang: str, target_lang: str) -> str:
-    """Translate text using deep-translator"""
+    """Translate text using googletrans"""
+    translator = Translator()
+    
+    # Split into smaller chunks (googletrans has 15k char limit per request)
     max_chunk = 4500
     paragraphs = text.split("\n")
     chunks = []
@@ -84,19 +115,31 @@ def translate_text(text: str, source_lang: str, target_lang: str) -> str:
     translated_chunks = []
 
     for i, chunk in enumerate(chunks):
-        try:
-            chunk = clean_text_for_xml(chunk)
-            if chunk.strip():  # Only translate non-empty chunks
-                translator = GoogleTranslator(source=source_lang, target=target_lang)
-                result = translator.translate(chunk)
-                translated_chunks.append(clean_text_for_xml(result))
-                print(f"Translated chunk {i + 1}/{len(chunks)}")
-                time.sleep(0.5)  # Rate limiting
-            else:
-                translated_chunks.append(chunk)
-        except Exception as e:
-            print(f"Translation error on chunk {i}: {e}")
+        chunk = clean_text_for_xml(chunk)
+        if not chunk.strip():
             translated_chunks.append(chunk)
+            continue
+            
+        # Retry logic
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                print(f"Translating chunk {i + 1}/{len(chunks)} (attempt {attempt + 1})...")
+                result = translator.translate(chunk, src=source_lang, dest=target_lang)
+                translated_chunks.append(clean_text_for_xml(result.text))
+                print(f"✓ Chunk {i + 1}/{len(chunks)} translated successfully")
+                time.sleep(0.5)  # Rate limiting
+                break
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    print(f"Retry {attempt + 1}/{max_retries} for chunk {i + 1}: {str(e)}")
+                    time.sleep(2)
+                else:
+                    print(f"Failed to translate chunk {i + 1}: {str(e)}")
+                    raise HTTPException(
+                        status_code=500, 
+                        detail=f"Translation failed on chunk {i + 1}: {str(e)}"
+                    )
 
     return "\n".join(translated_chunks)
 
@@ -124,10 +167,7 @@ def create_docx(text: str) -> io.BytesIO:
     return docx_io
 
 def create_doc(text: str) -> io.BytesIO:
-    """Create DOC document (Word 97-2003 format) - using DOCX library
-    Note: python-docx actually creates .docx format, but we'll label it as .doc
-    For true .doc format, we'd need a different library like pywin32 (Windows only)
-    or LibreOffice conversion. This is a compatibility workaround."""
+    """Create DOC document (Word 97-2003 format) - using DOCX library"""
     doc = Document()
     doc.add_heading("Translated Document", level=1)
 
@@ -152,7 +192,6 @@ def create_txt(text: str) -> io.BytesIO:
     """Create plain text file in memory and return BytesIO"""
     text = clean_text_for_xml(text)
 
-    # Add a simple header
     content = "TRANSLATED DOCUMENT\n"
     content += "=" * 50 + "\n\n"
     content += text
@@ -167,30 +206,36 @@ def create_txt(text: str) -> io.BytesIO:
 async def translate_pdf(
     file: UploadFile = File(...),
     direction: str = Form(...),
-    format: str = Form("docx") # default to docx if not specified
+    format: str = Form("docx")
 ):
     try:
-        # Validate file type
         if not file.filename.endswith('.pdf'):
             raise HTTPException(status_code=400, detail="Only PDF files are allowed")
         
-        # Read PDF into memory
         pdf_bytes = await file.read()
         
-        print("Extracting text...")
-        text = extract_text_from_pdf(pdf_bytes)
+        print(f"DEBUG: Received direction = '{direction}'")
+        
+        # Determine if we need OCR based on direction
+        if direction == "km-en":
+            # Use OCR for Khmer PDFs (better handling of Khmer fonts)
+            print("Extracting text using OCR (Khmer)...")
+            text = extract_text_from_pdf_ocr(pdf_bytes, lang='khm')
+            src, tgt = "km", "en"  # googletrans uses 'km' for Khmer
+        else:  # en-km
+            # Use standard extraction for English PDFs
+            print("Extracting text (standard)...")
+            text = extract_text_from_pdf(pdf_bytes)
+            src, tgt = "en", "km"
+        
+        print(f"DEBUG: Source = '{src}', Target = '{tgt}'")
 
         if not text or len(text) < 10:
             raise HTTPException(status_code=400, detail="Failed to extract text from PDF")
 
-        # Map language codes for deep-translator
-        # deep-translator uses 'km' for Khmer and 'en' for English
-        src, tgt = ("en", "km") if direction == "en-km" else ("km", "en")
-
         print(f"Translating {src} → {tgt}")
         translated_text = translate_text(text, src, tgt)
 
-        # Create the appropriate file format
         print(f"Creating {format.upper()} file...")
         if format == "docx":
             file_io = create_docx(translated_text)
@@ -200,7 +245,7 @@ async def translate_pdf(
             file_io = create_doc(translated_text)
             media_type = "application/msword"
             filename = "translated.doc"
-        else: #txt
+        else:
             file_io = create_txt(translated_text)
             media_type = "text/plain"
             filename = "translated.txt"
