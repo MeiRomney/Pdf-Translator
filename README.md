@@ -7,7 +7,11 @@ Live site: [https://pdf-translator-khm-en.vercel.app/](https://pdf-translator-kh
 
 ---
 
-<img width="1918" height="905" alt="image" src="https://github.com/user-attachments/assets/6c43f9a3-bceb-4552-901c-45e7adee6819" />
+<img width="1898" height="902" alt="image" src="https://github.com/user-attachments/assets/50045997-30df-4e1a-9259-15d9c8441880" />
+
+<img width="962" height="827" alt="image" src="https://github.com/user-attachments/assets/491b3fe8-2452-4047-a539-b934911c4f50" />
+
+
 
 
 ---
