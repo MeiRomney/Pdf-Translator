@@ -1,5 +1,5 @@
-// const API_URL = 'https://pdf-translator-78s1.onrender.com';
-const API_URL = 'http://localhost:8000';
+const API_URL = 'https://pdf-translator-4861.onrender.com';
+// const API_URL = 'http://localhost:8000';
 
 let currentFile = null;
 let resultBlob = null;
