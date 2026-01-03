@@ -3,7 +3,7 @@ from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 import fitz  # PyMuPDF
-from googletrans import Translator
+from googletrans import Translator, LANGUAGES
 from docx import Document
 from docx.shared import Pt
 import pytesseract
@@ -16,7 +16,7 @@ import os
 
 app = FastAPI()
 
-# CORS - Allow your Vercel frontend
+# CORS - Allow your frontend
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -36,16 +36,25 @@ app.add_middleware(
 @app.get("/")
 async def root():
     return {
-        "message": "PDF Translator API",
+        "message": "PDF Translator API - Multi-Language Support",
         "status": "active",
         "endpoints": {
-            "translate": "/translate (POST)"
+            "translate": "/translate (POST)",
+            "languages": "/languages (GET)"
         }
     }
 
 @app.get("/health")
 async def health_check():
     return {"status": "healthy"}
+
+@app.get("/languages")
+async def get_supported_languages():
+    """Return all supported languages"""
+    return {
+        "languages": LANGUAGES,
+        "total": len(LANGUAGES)
+    }
 
 def clean_text_for_xml(text: str) -> str:
     if not text:
@@ -54,27 +63,54 @@ def clean_text_for_xml(text: str) -> str:
     return text.encode("utf-8", errors="ignore").decode("utf-8", errors="ignore")
 
 
-def extract_text_from_pdf_ocr(pdf_bytes: bytes, lang: str = 'khm') -> str:
-    """Extract text from PDF using OCR (for Khmer PDFs with font issues)"""
+def extract_text_from_pdf_ocr(pdf_bytes: bytes, lang: str = 'eng') -> str:
+    """Extract text from PDF using OCR"""
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
     text = ""
     
+    # Map common language codes to Tesseract language codes
+    tesseract_lang_map = {
+        'en': 'eng',
+        'km': 'khm',
+        'zh-cn': 'chi_sim',
+        'zh-tw': 'chi_tra',
+        'ja': 'jpn',
+        'ko': 'kor',
+        'th': 'tha',
+        'vi': 'vie',
+        'ar': 'ara',
+        'hi': 'hin',
+        'fr': 'fra',
+        'de': 'deu',
+        'es': 'spa',
+        'it': 'ita',
+        'pt': 'por',
+        'ru': 'rus',
+    }
+    
+    tesseract_lang = tesseract_lang_map.get(lang, 'eng')
+    
     for page_num, page in enumerate(doc):
-        print(f"OCR processing page {page_num + 1}/{len(doc)}...")
+        print(f"OCR processing page {page_num + 1}/{len(doc)} with language: {tesseract_lang}...")
         
-        # Convert page to image
-        # Increase resolution for better OCR (300 DPI)
-        mat = fitz.Matrix(300/72, 300/72)
-        pix = page.get_pixmap(matrix=mat)
-        
-        # Convert to PIL Image
-        img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-        
-        # Perform OCR
-        # lang='khm' for Khmer, 'eng' for English
-        page_text = pytesseract.image_to_string(img, lang=lang)
-        page_text = clean_text_for_xml(page_text)
-        text += page_text + "\n\n"
+        try:
+            # Convert page to image (300 DPI for better OCR)
+            mat = fitz.Matrix(300/72, 300/72)
+            pix = page.get_pixmap(matrix=mat)
+            
+            # Convert to PIL Image
+            img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+            
+            # Perform OCR
+            page_text = pytesseract.image_to_string(img, lang=tesseract_lang)
+            page_text = clean_text_for_xml(page_text)
+            text += page_text + "\n\n"
+        except Exception as e:
+            print(f"OCR error on page {page_num + 1}: {e}")
+            # Fall back to standard extraction if OCR fails
+            page_text = page.get_text()
+            page_text = clean_text_for_xml(page_text)
+            text += page_text + "\n\n"
     
     doc.close()
     return text.strip()
@@ -90,6 +126,19 @@ def extract_text_from_pdf(pdf_bytes: bytes) -> str:
         text += page_text + "\n\n"
     doc.close()
     return text.strip()
+
+
+def detect_language(text: str) -> str:
+    """Detect the language of the text"""
+    try:
+        translator = Translator()
+        # Take a sample of text for detection (first 1000 chars)
+        sample = text[:1000] if len(text) > 1000 else text
+        detection = translator.detect(sample)
+        return detection.lang
+    except Exception as e:
+        print(f"Language detection error: {e}")
+        return "en"  # Default to English
 
 
 def translate_text(text: str, source_lang: str, target_lang: str) -> str:
@@ -144,10 +193,10 @@ def translate_text(text: str, source_lang: str, target_lang: str) -> str:
     return "\n".join(translated_chunks)
 
 
-def create_docx(text: str) -> io.BytesIO:
+def create_docx(text: str, title: str = "Document") -> io.BytesIO:
     """Create DOCX document in memory and return BytesIO"""
     doc = Document()
-    doc.add_heading("Translated Document", level=1)
+    doc.add_heading(title, level=1)
 
     text = clean_text_for_xml(text)
 
@@ -166,10 +215,10 @@ def create_docx(text: str) -> io.BytesIO:
     docx_io.seek(0)
     return docx_io
 
-def create_doc(text: str) -> io.BytesIO:
+def create_doc(text: str, title: str = "Document") -> io.BytesIO:
     """Create DOC document (Word 97-2003 format) - using DOCX library"""
     doc = Document()
-    doc.add_heading("Translated Document", level=1)
+    doc.add_heading(title, level=1)
 
     text = clean_text_for_xml(text)
 
@@ -188,11 +237,11 @@ def create_doc(text: str) -> io.BytesIO:
     doc_io.seek(0)
     return doc_io
 
-def create_txt(text: str) -> io.BytesIO:
+def create_txt(text: str, title: str = "DOCUMENT") -> io.BytesIO:
     """Create plain text file in memory and return BytesIO"""
     text = clean_text_for_xml(text)
 
-    content = "TRANSLATED DOCUMENT\n"
+    content = f"{title}\n"
     content += "=" * 50 + "\n\n"
     content += text
 
@@ -200,57 +249,94 @@ def create_txt(text: str) -> io.BytesIO:
     txt_io.write(content.encode('utf-8'))
     txt_io.seek(0)
     return txt_io
+
+
+def get_language_name(lang_code: str) -> str:
+    """Get full language name from code"""
+    return LANGUAGES.get(lang_code, lang_code.upper())
     
 
 @app.post("/translate")
 async def translate_pdf(
     file: UploadFile = File(...),
-    direction: str = Form(...),
+    source_lang: str = Form(None),  # Optional - will auto-detect if not provided
+    target_lang: str = Form(...),
+    use_ocr: bool = Form(False),
     format: str = Form("docx")
 ):
+    """
+    Translate or extract text from PDF
+    
+    Parameters:
+    - file: PDF file
+    - source_lang: Source language code (e.g., 'en', 'km', 'fr'). If None, will auto-detect
+    - target_lang: Target language code. Use same as source_lang for extraction only
+    - use_ocr: Whether to use OCR for text extraction
+    - format: Output format (docx, doc, txt)
+    """
     try:
         if not file.filename.endswith('.pdf'):
             raise HTTPException(status_code=400, detail="Only PDF files are allowed")
         
         pdf_bytes = await file.read()
         
-        print(f"DEBUG: Received direction = '{direction}'")
+        print(f"DEBUG: source_lang={source_lang}, target_lang={target_lang}, use_ocr={use_ocr}, format={format}")
         
-        # Determine if we need OCR based on direction
-        if direction == "km-en":
-            # Use OCR for Khmer PDFs (better handling of Khmer fonts)
-            print("Extracting text using OCR (Khmer)...")
-            text = extract_text_from_pdf_ocr(pdf_bytes, lang='khm')
-            src, tgt = "km", "en"  # googletrans uses 'km' for Khmer
-        else:  # en-km
-            # Use standard extraction for English PDFs
-            print("Extracting text (standard)...")
+        # Extract text
+        if use_ocr or source_lang in ['km', 'ar', 'hi', 'th', 'ja', 'ko', 'zh-cn', 'zh-tw']:
+            # Use OCR for languages that often have font issues
+            ocr_lang = source_lang if source_lang else 'eng'
+            print(f"Extracting text using OCR ({ocr_lang})...")
+            text = extract_text_from_pdf_ocr(pdf_bytes, lang=ocr_lang)
+        else:
+            # Use standard extraction
+            print("Extracting text (standard method)...")
             text = extract_text_from_pdf(pdf_bytes)
-            src, tgt = "en", "km"
         
-        print(f"DEBUG: Source = '{src}', Target = '{tgt}'")
-
         if not text or len(text) < 10:
             raise HTTPException(status_code=400, detail="Failed to extract text from PDF")
+        
+        # Auto-detect source language if not provided
+        if not source_lang or source_lang == 'auto':
+            print("Auto-detecting language...")
+            source_lang = detect_language(text)
+            print(f"Detected language: {source_lang} ({get_language_name(source_lang)})")
+        
+        # Check if this is extraction-only (same source and target)
+        is_extract_only = (source_lang == target_lang)
+        
+        if is_extract_only:
+            # Extract text only, no translation
+            final_text = text
+            lang_name = get_language_name(source_lang)
+            document_title = f"Extracted Text ({lang_name})"
+            print(f"Extraction complete! Extracted {len(text)} characters.")
+        else:
+            # Translation request
+            src_name = get_language_name(source_lang)
+            tgt_name = get_language_name(target_lang)
+            
+            print(f"Translating {source_lang} ({src_name}) → {target_lang} ({tgt_name})")
+            final_text = translate_text(text, source_lang, target_lang)
+            document_title = f"Translated Document ({src_name} → {tgt_name})"
+            print("Translation complete!")
 
-        print(f"Translating {src} → {tgt}")
-        translated_text = translate_text(text, src, tgt)
-
+        # Create output file
         print(f"Creating {format.upper()} file...")
         if format == "docx":
-            file_io = create_docx(translated_text)
+            file_io = create_docx(final_text, document_title)
             media_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-            filename = "translated.docx"
+            filename = "result.docx"
         elif format == "doc":
-            file_io = create_doc(translated_text)
+            file_io = create_doc(final_text, document_title)
             media_type = "application/msword"
-            filename = "translated.doc"
-        else:
-            file_io = create_txt(translated_text)
+            filename = "result.doc"
+        else:  # txt
+            file_io = create_txt(final_text, document_title.upper())
             media_type = "text/plain"
-            filename = "translated.txt"
+            filename = "result.txt"
 
-        print("Translation complete!")
+        print("Process complete! Sending file to client.")
 
         return StreamingResponse(
             file_io,
@@ -264,6 +350,8 @@ async def translate_pdf(
         raise
     except Exception as e:
         print("Error:", e)
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
